@@ -2,7 +2,7 @@
 
 """
 File Name:      my_agent.py
-Authors:        Austin Ayers
+Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
 Date:           10/31/20
 
 Description:    Python file for my agent.
@@ -11,8 +11,9 @@ Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 
 import random
 import chess
-from datetime import datetime                   # Used to MCTS in a certain amount so we don't run
-                                                # out of time
+import chess.engine
+from datetime import datetime                   # Used to MCTS in a certain amount so we don't run out of time
+
 from player import Player
 
 
@@ -30,6 +31,9 @@ class Ayers(Player):
 
         # Set up a turn counter for the model so that we can make specific moves the first few turns
         self.turn_number = None
+
+        #from https://python-chess.readthedocs.io/en/latest/engine.html
+        self.engine = chess.engine.SimpleEngine.popen_uci("STOCKFISH_PATH_HERE")
         
     def handle_game_start(self, color, board):
         """
@@ -43,7 +47,7 @@ class Ayers(Player):
         self.board = board
         self.color = color
         self.turn_number = 0
-        
+
     def handle_opponent_move_result(self, captured_piece, captured_square):
         """
         This function is called at the start of your turn and gives you the chance to update your board.
@@ -70,6 +74,19 @@ class Ayers(Player):
         :example: choice = chess.A1
         """
         # TODO: update this method
+        # if our piece was just captured, sense where it was captured
+        if self.taken_square:
+            return self.taken_square
+
+        # if we might capture a piece when we move, sense where the capture will occur
+        future_move = self.choose_move(possible_moves, seconds_left)
+        if future_move is not None and self.board.piece_at(future_move.to_square) is not None:
+            return future_move.to_square
+
+        # otherwise, just randomly choose a sense action, but don't sense on a square where our pieces are located
+        for square, piece in self.board.piece_map().items():
+            if piece.color == self.color:
+                possible_sense.remove(square)
         return random.choice(possible_sense)
         
     def handle_sense_result(self, sense_result):
@@ -106,8 +123,29 @@ class Ayers(Player):
         :example: choice = chess.Move(chess.G7, chess.G8, promotion=chess.KNIGHT) *default is Queen
         """
         # TODO: update this method -- Need to implement MCTS here
-        choice = random.choice(possible_moves)
-        return choice
+
+        # if we might be able to take the king, try to
+        enemy_king_square = self.board.king(not self.color)
+        if enemy_king_square:
+            # if there are any ally pieces that can take king, execute one of those moves
+            enemy_king_attackers = self.board.attackers(self.color, enemy_king_square)
+            if enemy_king_attackers:
+                attacker_square = enemy_king_attackers.pop()
+                return chess.Move(attacker_square, enemy_king_square)
+
+        # otherwise, try to move with the stockfish chess engine
+        try:
+            self.board.turn = self.color
+            self.board.clear_stack()
+            result = self.engine.play(self.board, chess.engine.Limit(time=0.5))
+            return result.move
+        except chess.engine.EngineTerminatedError:
+            print('Stockfish Engine died')
+        except chess.engine.EngineError:
+            print('Stockfish Engine bad state at "{}"'.format(self.board.fen()))
+
+        # if all else fails, pass
+        return None
         
     def handle_move_result(self, requested_move, taken_move, reason, captured_piece, captured_square):
         """
@@ -121,7 +159,9 @@ class Ayers(Player):
         :param captured_square: chess.Square - position where you captured the piece
         """
         # TODO: implement this method
-        pass
+        # if a move was executed, apply it to our board
+        if taken_move is not None:
+            self.board.push(taken_move)
         
     def handle_game_end(self, winner_color, win_reason):  # possible GameHistory object...
         """
@@ -131,49 +171,53 @@ class Ayers(Player):
         :param win_reason: String -- the reason for the game ending
         """
         # TODO: implement this method
-        pass
+        try:
+            # if the engine is already terminated then this call will throw an exception
+            self.engine.quit()
+        except chess.engine.EngineTerminatedError:
+            pass
 
-class Chess_Node:
-    def __init__(self, board=None):
-        # Set variables that will define the :
-        # Set the board (Essentially what defines the node)
-        self.board = board              # Will be a chess.Board board
-
-        # Initialize the number of times the node has been visited when traversal occurs 
-        # for the UCT calculations
-        self.visits = None              # Will be an integer
-
-        # Initialize the reward for the 
-        self.reward = None              # Will be an integer
-
-        # Set up variables so children are accessable and a parent is accessable
-        self.parent = None              # Will be a single node
-        self.children = None            # Will be a dictionary
-
-    def __eq__(self, other):
-        """
-        Custom equality function for the Chess_Node to see if one node is equivalent to one 
-        another
-
-        :param other: The other node that is being compared to this one
-        """
-        # Two nodes are "equal" in our game universe if they have the same board 
-        return self.board == other.board
-
-    def __hash__(self):
-        """
-        Custom hash function for the Chess_Node to create 
-        """
-        return (hash(self.board))
-
-    def analyze_board_w_fish(self, board, limit_time = 0.01):
-        """
-        Pulled this code from stack overflow because I didn't know how to used the 
-        stockfish library
-
-        :param board: The board that will be evaluated
-        :param limit_time: The time limit that will be given for the evaluation
-        """
-        engine = chess.engine.SimpleEngine.popen_uci("stockfish_10_x64")
-        result = engine.analyse(board, chess.engine.Limit(time=limit_time))
-        return result['score']
+# class Chess_Node:
+#     def __init__(self, board=None):
+#         # Set variables that will define the :
+#         # Set the board (Essentially what defines the node)
+#         self.board = board              # Will be a chess.Board board
+#
+#         # Initialize the number of times the node has been visited when traversal occurs
+#         # for the UCT calculations
+#         self.visits = None              # Will be an integer
+#
+#         # Initialize the reward for the
+#         self.reward = None              # Will be an integer
+#
+#         # Set up variables so children are accessable and a parent is accessable
+#         self.parent = None              # Will be a single node
+#         self.children = None            # Will be a dictionary
+#
+#     def __eq__(self, other):
+#         """
+#         Custom equality function for the Chess_Node to see if one node is equivalent to one
+#         another
+#
+#         :param other: The other node that is being compared to this one
+#         """
+#         # Two nodes are "equal" in our game universe if they have the same board
+#         return self.board == other.board
+#
+#     def __hash__(self):
+#         """
+#         Custom hash function for the Chess_Node to create
+#         """
+#         return (hash(self.board))
+#
+#     def analyze_board_w_fish(self, board, limit_time = 0.01):
+#         """
+#         Pulled this code from stack overflow because I didn't know how to used the
+#         stockfish library
+#
+#         :param board: The board that will be evaluated
+#         :param limit_time: The time limit that will be given for the evaluation
+#         """
+#         engine = chess.engine.SimpleEngine.popen_uci("stockfish_10_x64")
+#         result = engine.analyse(board, chess.engine.Limit(time=limit_time))
+#         return result['score']
