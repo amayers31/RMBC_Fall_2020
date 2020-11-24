@@ -2,9 +2,36 @@
 
 """
 File Name:      my_agent.py
+Authors:        TODO: Your names here!
+Date:           TODO: The date you finally started working on this.
+
+Description:    Python file for my agent.
+Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
+"""
+
+import random
+import chess
+from player import Player
+from datetime import datetime
+
+
+# TODO: Rename this class to what you would like your bot to be named during the game.
+class MyAgent(Player):
+
+    def __init__(self):
+        pass
+        
+    def handle_game_start(self, color, board):
+        """
+        This function is called at the start of the game.
+
+        :param color: chess.BLACK or chess.WHITE -- your color assignment for the game
+        :param board: chess.Board -- initial board state
+        :return:
+        """"""
+File Name:      my_agent.py
 Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
 Date:           10/31/20
-
 Description:    Python file for my agent.
 Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 """
@@ -38,7 +65,6 @@ class Ayers(Player):
     def handle_game_start(self, color, board):
         """
         This function is called at the start of the game.
-
         :param color: chess.BLACK or chess.WHITE -- your color assignment for the game
         :param board: chess.Board -- initial board state
         :return:
@@ -51,7 +77,6 @@ class Ayers(Player):
     def handle_opponent_move_result(self, captured_piece, captured_square):
         """
         This function is called at the start of your turn and gives you the chance to update your board.
-
         :param captured_piece: bool - true if your opponents captured your piece with their last move
         :param captured_square: chess.Square - position where your piece was captured
         """
@@ -65,11 +90,9 @@ class Ayers(Player):
     def choose_sense(self, possible_sense, possible_moves, seconds_left):
         """
         This function is called to choose a square to perform a sense on.
-
         :param possible_sense: List(chess.SQUARES) -- list of squares to sense around
         :param possible_moves: List(chess.Moves) -- list of acceptable moves based on current board
         :param seconds_left: float -- seconds left in the game
-
         :return: chess.SQUARE -- the center of 3x3 section of the board you want to sense
         :example: choice = chess.A1
         """
@@ -93,7 +116,6 @@ class Ayers(Player):
         """
         This is a function called after your picked your 3x3 square to sense and gives you the chance to update your
         board.
-
         :param sense_result: A list of tuples, where each tuple contains a :class:`Square` in the sense, and if there
                              was a piece on the square, then the corresponding :class:`chess.Piece`, otherwise `None`.
         :example:
@@ -109,10 +131,92 @@ class Ayers(Player):
         for square in sense_result:
             self.board.set_piece_at(square[0], square[1])
 
+    def handle_move_result(self, requested_move, taken_move, reason, captured_piece, captured_square):
+        """
+        This is a function called at the end of your turn/after your move was made and gives you the chance to update
+        your board.
+        :param requested_move: chess.Move -- the move you intended to make
+        :param taken_move: chess.Move -- the move that was actually made
+        :param reason: String -- description of the result from trying to make requested_move
+        :param captured_piece: bool - true if you captured your opponents piece
+        :param captured_square: chess.Square - position where you captured the piece
+        """
+        # TODO: implement this method
+        # if a move was executed, apply it to our board
+        if taken_move is not None:
+            self.board.push(taken_move)
+        
+    def handle_game_end(self, winner_color, win_reason):  # possible GameHistory object...
+        """
+        This function is called at the end of the game to declare a winner.
+        :param winner_color: Chess.BLACK/chess.WHITE -- the winning color
+        :param win_reason: String -- the reason for the game ending
+        """
+        # TODO: implement this method
+        try:
+            # if the engine is already terminated then this call will throw an exception
+            self.engine.quit()
+        except chess.engine.EngineTerminatedError:
+            pass
+
+	# function for node traversal 
+    def expand(self, node):
+        action = node.untried_actions.pop()
+        child_board = 
+        child_node = Chess_Node(child_board, parent = node)
+        node.children.append(child_node)
+        return child_node
+
+    def uct(self, node):
+            choices_weights = [
+                (child.total_rewards / child.visits) + 1.4 * np.sqrt((2 * np.log(node.visits) / child.visits))
+                for child in node.children
+            ]
+        return node.children[np.argmax(choices_weights)]
+
+	def traverse(self, node):
+		current = node
+		while not #game_over:
+			if not len(current.untried_actions)==0:
+				return self.expand(current)
+			else:
+				current = self.uct(current)
+	  	
+	  	return current
+	  
+
+	# function for the result of the simulation 
+	def rollout(self, node):
+        curr_board = node.board 
+	    while non_terminal(curr_board):
+            move = possible_move(board)
+            action = np.random.randint(len(move))
+	        curr_board = curr_board.move(action) 
+	    return result(curr_board) 
+	  
+	# function for backpropagation 
+	def backpropagate(self, node, result): 
+	    node.visits += 1
+        node.result[result]+=1
+	    	
+	    if node.parent:
+    	    self.backpropagate(node.parent, result) 
+
+    def MCTS(self, possible_moves, seconds_left):
+    	time = datetime.now()
+
+    	root = Chess_Node(self.board)
+
+    	while(hasTimeLeft()):
+    		leaf = traverse(root)
+    		simulation_result = rollout(leaf)
+    		backpropagate(leaf, simulation _result)
+
+    	return best_child_root
+
     def choose_move(self, possible_moves, seconds_left):
         """
         Choose a move to enact from a list of possible moves.
-
         :param possible_moves: List(chess.Moves) -- list of acceptable moves based only on pieces
         :param seconds_left: float -- seconds left to make a move
         
@@ -146,78 +250,58 @@ class Ayers(Player):
 
         # if all else fails, pass
         return None
-        
-    def handle_move_result(self, requested_move, taken_move, reason, captured_piece, captured_square):
-        """
-        This is a function called at the end of your turn/after your move was made and gives you the chance to update
-        your board.
 
-        :param requested_move: chess.Move -- the move you intended to make
-        :param taken_move: chess.Move -- the move that was actually made
-        :param reason: String -- description of the result from trying to make requested_move
-        :param captured_piece: bool - true if you captured your opponents piece
-        :param captured_square: chess.Square - position where you captured the piece
-        """
+class Chess_Node:
+     def __init__(self, board=None, parent = None):
+         self.board = board              # Will be a chess.Board board
+
+         self.visits = 0              # Will be an integer
+
+         # Initialize the reward for the
+         self.result = defaultdict(int)              # Will be an integer
+
+         self.untried_actions = None
+
+         # Set up variables so children are accessable and a parent is accessable
+         self.parent = parent            # Will be a single node
+         self.children = []           # Will be a dictionary
+
+     def total_rewards(self):
+        wins = self.results[self.parent]
+        loses = self.results[-1*self.parent]
+        return wins - loses
+
+     def untried_actions(self):
+        if self.untried_actions is None:
+            self.untried_actions = self.#possible_actions
+     
+     def __eq__(self, other):
+         """
+         Custom equality function for the Chess_Node to see if one node is equivalent to one
+         another
+
+         :param other: The other node that is being compared to this one
+         """
+         # Two nodes are "equal" in our game universe if they have the same board
+         return self.board == other.board
+
+     def __hash__(self):
+         """
+         Custom hash function for the Chess_Node to create
+         """
+         return (hash(self.board))
+
+     def analyze_board_w_fish(self, board, limit_time = 0.01):
+         """
+         Pulled this code from stack overflow because I didn't know how to used the
+         stockfish library
+
+         :param board: The board that will be evaluated
+         :param limit_time: The time limit that will be given for the evaluation
+         """
+         engine = chess.engine.SimpleEngine.popen_uci("stockfish_10_x64")
+         result = engine.analyse(board, chess.engine.Limit(time=limit_time))
+         return result['score']
         # TODO: implement this method
-        # if a move was executed, apply it to our board
-        if taken_move is not None:
-            self.board.push(taken_move)
-        
-    def handle_game_end(self, winner_color, win_reason):  # possible GameHistory object...
-        """
-        This function is called at the end of the game to declare a winner.
+        pass
 
-        :param winner_color: Chess.BLACK/chess.WHITE -- the winning color
-        :param win_reason: String -- the reason for the game ending
-        """
-        # TODO: implement this method
-        try:
-            # if the engine is already terminated then this call will throw an exception
-            self.engine.quit()
-        except chess.engine.EngineTerminatedError:
-            pass
-
-# class Chess_Node:
-#     def __init__(self, board=None):
-#         # Set variables that will define the :
-#         # Set the board (Essentially what defines the node)
-#         self.board = board              # Will be a chess.Board board
-#
-#         # Initialize the number of times the node has been visited when traversal occurs
-#         # for the UCT calculations
-#         self.visits = None              # Will be an integer
-#
-#         # Initialize the reward for the
-#         self.reward = None              # Will be an integer
-#
-#         # Set up variables so children are accessable and a parent is accessable
-#         self.parent = None              # Will be a single node
-#         self.children = None            # Will be a dictionary
-#
-#     def __eq__(self, other):
-#         """
-#         Custom equality function for the Chess_Node to see if one node is equivalent to one
-#         another
-#
-#         :param other: The other node that is being compared to this one
-#         """
-#         # Two nodes are "equal" in our game universe if they have the same board
-#         return self.board == other.board
-#
-#     def __hash__(self):
-#         """
-#         Custom hash function for the Chess_Node to create
-#         """
-#         return (hash(self.board))
-#
-#     def analyze_board_w_fish(self, board, limit_time = 0.01):
-#         """
-#         Pulled this code from stack overflow because I didn't know how to used the
-#         stockfish library
-#
-#         :param board: The board that will be evaluated
-#         :param limit_time: The time limit that will be given for the evaluation
-#         """
-#         engine = chess.engine.SimpleEngine.popen_uci("stockfish_10_x64")
-#         result = engine.analyse(board, chess.engine.Limit(time=limit_time))
-#         return result['score']
