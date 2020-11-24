@@ -164,12 +164,13 @@ class Ayers(Player):
         action = node.untried_actions.pop()
         child_board = 
         child_node = Chess_Node(child_board, parent = node)
+        child_node.action = action
         node.children.append(child_node)
         return child_node
 
-    def uct(self, node):
+    def uct(self, node, param = 1.4):
             choices_weights = [
-                (child.total_rewards / child.visits) + 1.4 * np.sqrt((2 * np.log(node.visits) / child.visits))
+                (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits))
                 for child in node.children
             ]
         return node.children[np.argmax(choices_weights)]
@@ -212,7 +213,7 @@ class Ayers(Player):
     		simulation_result = rollout(leaf)
     		backpropagate(leaf, simulation _result)
 
-    	return best_child_root
+    	return root.uct(param = 0.0).action
 
     def choose_move(self, possible_moves, seconds_left):
         """
@@ -265,6 +266,7 @@ class Chess_Node:
          # Set up variables so children are accessable and a parent is accessable
          self.parent = parent            # Will be a single node
          self.children = []           # Will be a dictionary
+         self.action = None
 
      def total_rewards(self):
         wins = self.results[self.parent]
