@@ -60,7 +60,7 @@ def possible_moves(board, color):
 
     no_opponents_board = b
 
-    for pawn_square in board.pieces(chess.PAWN, self.color):
+    for pawn_square in board.pieces(chess.PAWN, color):
         for attacked_square in board.attacks(pawn_square):
             # skip this square if one of our own pieces are on the square
             if no_opponents_board.piece_at(attacked_square):
@@ -73,7 +73,7 @@ def possible_moves(board, color):
                 for piece_type in chess.PIECE_TYPES[1:-1]:
                     pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
 
-    return list(b.generate_psudo_legal_moves()) + pawn_capture_moves
+    return list(b.generate_pseudo_legal_moves()) + pawn_capture_moves
 
 # TODO: Rename this class to what you would like your bot to be named during the game.
 class Ayers(Player):
@@ -224,7 +224,7 @@ class Ayers(Player):
         # its legal
         return False
     
-    def _slide_move(self, board, move):
+    def slide_move(self, board, move):
         psuedo_legal_moves = list(board.generate_pseudo_legal_moves())
         squares = list(chess.SquareSet(chess.BB_BETWEEN[move.from_square][move.to_square])) + [move.to_square]
         squares = sorted(squares, key=lambda s: chess.square_distance(s, move.from_square), reverse=True)
@@ -234,7 +234,7 @@ class Ayers(Player):
                 return revised
         return None
 
-    def _revise_move(self, board, move):
+    def revise_move(self, board, move):
         # if its a legal move, don't change it at all. note that board.generate_psuedo_legal_moves() does not
         # include psuedo legal castles
         if move in board.generate_pseudo_legal_moves() or self._is_psuedo_legal_castle(board, move):
@@ -246,10 +246,10 @@ class Ayers(Player):
 
         # if the piece is a sliding piece, slide it as far as it can go
         piece = board.piece_at(move.from_square)
-        if piece.piece_type in [chess.PAWN, chess.ROOK, chess.BISHOP, chess.QUEEN]:
-            move = self._slide_move(board, move)
+        if not piece is None and piece.piece_type in [chess.PAWN, chess.ROOK, chess.BISHOP, chess.QUEEN]:
+            move = self.slide_move(board, move)
 
-        return move if move in self.truth_board.generate_pseudo_legal_moves() else None
+        return move if move in board.generate_pseudo_legal_moves() else None
 
     def handle_move(self, board, requested_move):
         """
@@ -262,7 +262,7 @@ class Ayers(Player):
                                  None -- if there is no captured piece
         """
         move = self._add_pawn_queen_promotion(board, requested_move)
-        taken_move = self._revise_move(board, move)
+        taken_move = self.revise_move(board, move)
         
         # push move to appropriate boards for updates #
         board.push(taken_move if taken_move is not None else chess.Move.null())
@@ -272,14 +272,19 @@ class Ayers(Player):
     def expand(self, node):
         action = node.untried_actions.pop()
         child_board = self.handle_move(node.board, action)
-        child_node = Chess_Node(child_board, parent = node, )
+        child_color = None
+        if node.color == chess.WHITE:
+            child_color = chess.BLACK
+        else:
+            child_color = chess.WHITE
+        child_node = Chess_Node(board = child_board, parent = node, color = child_color)
         child_node.action = action
         node.children.append(child_node)
         return child_node
 
     def uct(self, node, param = 1.4):
         choices_weights = [
-            (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits))
+            (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits)) 
             for child in node.children
         ]
         return node.children[np.argmax(choices_weights)]
@@ -287,7 +292,7 @@ class Ayers(Player):
 
     def traverse(self, node):
         current = node
-        while not self.is_over(current):
+        while not self.is_over(current.board):
             if not len(current.untried_actions)==0:
                 return self.expand(current)
             else:
@@ -312,18 +317,23 @@ class Ayers(Player):
     # function for the result of the simulation 
     def rollout(self, node):
         curr_board = node.board.copy()
+        color = node.color
         count = 0
-        while not self.is_over(cur_board) and count < 500:
-            move = possible_moves(cur_board)
+        while not self.is_over(curr_board) and count < 500:
+            move = possible_moves(curr_board, color)
             action = np.random.randint(len(move))
-            curr_board = self.handle_move(curr_board, action) 
+            curr_board = self.handle_move(curr_board, move[action]) 
             count = count + 1
+            if color == chess.WHITE:
+                color == chess.BLACK
+            else:
+                color == chess.WHITE
         return self.result(curr_board) 
       
     # function for backpropagation 
     def backpropagate(self, node, result): 
         node.visits += 1
-        node.result[result]+=1
+        node.total_rewards+=result
             
         if node.parent:
             self.backpropagate(node.parent, result) 
@@ -331,14 +341,19 @@ class Ayers(Player):
     def MCTS(self, possible_moves, seconds_left):
         time = datetime.now()
 
-        root = Chess_Node(self.board)
-
-        while(datetime.now()-time < seconds_left-1):
+        count = 0
+        root = Chess_Node(board = self.board, color = self.color)
+        print("root")
+        print(self.board)
+        while(count < 10):
             leaf = self.traverse(root)
             simulation_result = self.rollout(leaf)
             self.backpropagate(leaf, simulation_result)
+            count =  count + 1
 
-        return root.uct(param = 0.0).action
+        act = self.uct(root, param = 0.0).action
+        print(act)
+        return act
 
     def choose_move(self, possible_moves, seconds_left):
         """
@@ -381,9 +396,10 @@ class Ayers(Player):
         
 
 class Chess_Node:
-     def __init__(self, board=None, color, parent = None):
+     def __init__(self, board=None, color=None, parent = None):
          self.board = board              # Will be a chess.Board board
          self.color =  color
+         self.total_rewards = 0
 
          self.visits = 0              # Will be an integer
 
@@ -396,11 +412,6 @@ class Chess_Node:
          self.parent = parent            # Will be a single node
          self.children = []           # Will be a dictionary
          self.action = None
-
-     def total_rewards(self):
-        wins = self.results[self.parent]
-        loses = self.results[-1*self.parent]
-        return wins - loses
      
      def __eq__(self, other):
          """
