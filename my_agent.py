@@ -12,9 +12,11 @@ Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 import random
 import chess
 from player import Player
+import numpy as np
+from collections import defaultdict
 from datetime import datetime
 
-
+'''
 # TODO: Rename this class to what you would like your bot to be named during the game.
 class MyAgent(Player):
 
@@ -27,7 +29,9 @@ class MyAgent(Player):
         :param color: chess.BLACK or chess.WHITE -- your color assignment for the game
         :param board: chess.Board -- initial board state
         :return:
-        """"""
+        """
+'''
+"""
 File Name:      my_agent.py
 Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
 Date:           10/31/20
@@ -43,13 +47,13 @@ from datetime import datetime                   # Used to MCTS in a certain amou
 from player import Player
 
 
-def possible_moves(board):
+def possible_moves(board, color):
     ## This is lifted from game.py
     # Will return a list of valid moves
     # Get the board without opponnets pieces
     b = board.copy()
     for piece_type in chess.PIECE_TYPES:
-        for sq in b.pieces(piece_type, not self.color):
+        for sq in b.pieces(piece_type, not color):
             b.remove_piece_at(sq)
 
     pawn_capture_moves = []
@@ -87,7 +91,7 @@ class Ayers(Player):
         self.turn_number = None
 
         #from https://python-chess.readthedocs.io/en/latest/engine.html
-        self.engine = chess.engine.SimpleEngine.popen_uci("STOCKFISH_PATH_HERE")
+        #self.engine = chess.engine.SimpleEngine.popen_uci("STOCKFISH_PATH_HERE")
         
     def handle_game_start(self, color, board):
         """
@@ -187,7 +191,7 @@ class Ayers(Player):
             pass
 
     def is_over(self, board):
-    	return board.king(chess.WHITE) is None or board.king(chess.BLACK) is None
+        return board.king(chess.WHITE) is None or board.king(chess.BLACK) is None
 
     def _add_pawn_queen_promotion(self, board, move):
         back_ranks = list(chess.SquareSet(chess.BB_BACKRANKS))
@@ -264,77 +268,77 @@ class Ayers(Player):
         board.push(taken_move if taken_move is not None else chess.Move.null())
         return board
 
-	# function for node traversal 
+    # function for node traversal 
     def expand(self, node):
         action = node.untried_actions.pop()
         child_board = self.handle_move(node.board, action)
-        child_node = Chess_Node(child_board, parent = node)
+        child_node = Chess_Node(child_board, parent = node, )
         child_node.action = action
         node.children.append(child_node)
         return child_node
 
     def uct(self, node, param = 1.4):
-            choices_weights = [
-                (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits))
-                for child in node.children
-            ]
+        choices_weights = [
+            (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits))
+            for child in node.children
+        ]
         return node.children[np.argmax(choices_weights)]
 
 
-	def traverse(self, node):
-		current = node
-		while not self.is_over(current):
-			if not len(current.untried_actions)==0:
-				return self.expand(current)
-			else:
-				current = self.uct(current)
-	  	
-	  	return current
-	  
-	def result(self, board):
-		if not self.is_over(board):
-			return 0
-		if self.color == chess.WHITE:
-			if board.king(chess.WHITE) is None:
-				return -1
-			else:
-				return 1
-		else:
-			if board.king(chess.BLACK) is None:
-				return -1
-			else:
-				return 1
+    def traverse(self, node):
+        current = node
+        while not self.is_over(current):
+            if not len(current.untried_actions)==0:
+                return self.expand(current)
+            else:
+                current = self.uct(current)
+        
+        return current
+      
+    def result(self, board):
+        if not self.is_over(board):
+            return 0
+        if self.color == chess.WHITE:
+            if board.king(chess.WHITE) is None:
+                return -1
+            else:
+                return 1
+        else:
+            if board.king(chess.BLACK) is None:
+                return -1
+            else:
+                return 1
 
-	# function for the result of the simulation 
-	def rollout(self, node):
+    # function for the result of the simulation 
+    def rollout(self, node):
         curr_board = node.board.copy()
         count = 0
-	    while not self.is_over(cur_board) and count < 500:
+        while not self.is_over(cur_board) and count < 500:
             move = possible_moves(cur_board)
             action = np.random.randint(len(move))
-	        curr_board = self.handle_move(curr_board, action) 
-	        count = count + 1
-	    return self.result(curr_board) 
-	  
-	# function for backpropagation 
-	def backpropagate(self, node, result): 
-	    node.visits += 1
+            curr_board = self.handle_move(curr_board, action) 
+            count = count + 1
+        return self.result(curr_board) 
+      
+    # function for backpropagation 
+    def backpropagate(self, node, result): 
+        node.visits += 1
         node.result[result]+=1
-	    	
-	    if node.parent:
-    	    self.backpropagate(node.parent, result) 
+            
+        if node.parent:
+            self.backpropagate(node.parent, result) 
 
     def MCTS(self, possible_moves, seconds_left):
-    	time = datetime.now()
+        time = datetime.now()
 
-    	root = Chess_Node(self.board)
+        root = Chess_Node(self.board)
 
-    	while(hasTimeLeft()):
-    		leaf = self.traverse(root)
-    		simulation_result = self.rollout(leaf)
-    		self.backpropagate(leaf, simulation _result)
+        while(datetime.now()-time < seconds_left-1):
+            leaf = self.traverse(root)
+            simulation_result = self.rollout(leaf)
+            self.backpropagate(leaf, simulation_result)
 
-    	return root.uct(param = 0.0).action
+        return root.uct(param = 0.0).action
 
     def choose_move(self, possible_moves, seconds_left):
         """
@@ -360,6 +364,7 @@ class Ayers(Player):
                 return chess.Move(attacker_square, enemy_king_square)
 
         # otherwise, try to move with the stockfish chess engine
+        '''
         try:
             self.board.turn = self.color
             self.board.clear_stack()
@@ -369,21 +374,23 @@ class Ayers(Player):
             print('Stockfish Engine died')
         except chess.engine.EngineError:
             print('Stockfish Engine bad state at "{}"'.format(self.board.fen()))
+        '''
 
         # if all else fails, pass
-        return None
+        return self.MCTS(possible_moves, seconds_left)
         
 
 class Chess_Node:
-     def __init__(self, board=None, parent = None):
+     def __init__(self, board=None, color, parent = None):
          self.board = board              # Will be a chess.Board board
+         self.color =  color
 
          self.visits = 0              # Will be an integer
 
          # Initialize the reward for the
          self.result = defaultdict(int)              # Will be an integer
 
-		 self.untried_actions = possible_moves(self.board)
+         self.untried_actions = possible_moves(self.board, self.color)
 
          # Set up variables so children are accessable and a parent is accessable
          self.parent = parent            # Will be a single node
@@ -409,7 +416,7 @@ class Chess_Node:
          Custom hash function for the Chess_Node to create
          """
          return (hash(self.board))
-
+     '''
      def analyze_board_w_fish(self, board, limit_time = 0.01):
          """
          Pulled this code from stack overflow because I didn't know how to used the
@@ -422,3 +429,4 @@ class Chess_Node:
          return result['score']
         # TODO: implement this method
         pass
+    '''
