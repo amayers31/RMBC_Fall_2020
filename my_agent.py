@@ -1,10 +1,10 @@
+  
 #!/usr/bin/env python3
 
 """
 File Name:      my_agent.py
 Authors:        TODO: Your names here!
 Date:           TODO: The date you finally started working on this.
-
 Description:    Python file for my agent.
 Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 """
@@ -24,7 +24,6 @@ class MyAgent(Player):
     def handle_game_start(self, color, board):
         """
         This function is called at the start of the game.
-
         :param color: chess.BLACK or chess.WHITE -- your color assignment for the game
         :param board: chess.Board -- initial board state
         :return:
@@ -43,6 +42,34 @@ from datetime import datetime                   # Used to MCTS in a certain amou
 
 from player import Player
 
+
+def possible_moves(board):
+    ## This is lifted from game.py
+    # Will return a list of valid moves
+    # Get the board without opponnets pieces
+    b = board.copy()
+    for piece_type in chess.PIECE_TYPES:
+        for sq in b.pieces(piece_type, not self.color):
+            b.remove_piece_at(sq)
+
+    pawn_capture_moves = []
+
+    no_opponents_board = b
+
+    for pawn_square in board.pieces(chess.PAWN, self.color):
+        for attacked_square in board.attacks(pawn_square):
+            # skip this square if one of our own pieces are on the square
+            if no_opponents_board.piece_at(attacked_square):
+                continue
+
+            pawn_capture_moves.append(chess.Move(pawn_square, attacked_square))
+
+            # add in promotion moves
+            if attacked_square in chess.SquareSet(chess.BB_BACKRANKS):
+                for piece_type in chess.PIECE_TYPES[1:-1]:
+                    pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
+
+    return list(b.generate_psudo_legal_moves()) + pawn_capture_moves
 
 # TODO: Rename this class to what you would like your bot to be named during the game.
 class Ayers(Player):
@@ -159,10 +186,88 @@ class Ayers(Player):
         except chess.engine.EngineTerminatedError:
             pass
 
+    def is_over(self, board):
+    	return board.king(chess.WHITE) is None or board.king(chess.BLACK) is None
+
+    def _add_pawn_queen_promotion(self, board, move):
+        back_ranks = list(chess.SquareSet(chess.BB_BACKRANKS))
+        piece = board.piece_at(move.from_square)
+        if piece is not None and piece.piece_type == chess.PAWN and move.to_square in back_ranks and move.promotion is None:
+            move = chess.Move(move.from_square, move.to_square, chess.QUEEN)
+        return move
+    
+    def _is_psuedo_legal_castle(self, board, move):
+        return board.is_castling(move) and not self._is_illegal_castle(board, move)
+    
+    def _is_illegal_castle(self, board, move):
+        if not board.is_castling(move):
+            return False
+
+        # illegal without kingside rights
+        if board.is_kingside_castling(move) and not board.has_kingside_castling_rights(board.turn):
+            return True
+
+        # illegal without queenside rights
+        if board.is_queenside_castling(move) and not board.has_queenside_castling_rights(board.turn):
+            return True
+
+        # illegal if any pieces are between king & rook
+        rook_square = chess.square(7 if board.is_kingside_castling(move) else 0, chess.square_rank(move.from_square))
+        between_squares = chess.SquareSet(chess.BB_BETWEEN[move.from_square][rook_square])
+        if any(map(lambda s: board.piece_at(s), between_squares)):
+            return True
+
+        # its legal
+        return False
+    
+    def _slide_move(self, board, move):
+        psuedo_legal_moves = list(board.generate_pseudo_legal_moves())
+        squares = list(chess.SquareSet(chess.BB_BETWEEN[move.from_square][move.to_square])) + [move.to_square]
+        squares = sorted(squares, key=lambda s: chess.square_distance(s, move.from_square), reverse=True)
+        for slide_square in squares:
+            revised = chess.Move(move.from_square, slide_square, move.promotion)
+            if revised in psuedo_legal_moves:
+                return revised
+        return None
+
+    def _revise_move(self, board, move):
+        # if its a legal move, don't change it at all. note that board.generate_psuedo_legal_moves() does not
+        # include psuedo legal castles
+        if move in board.generate_pseudo_legal_moves() or self._is_psuedo_legal_castle(board, move):
+            return move
+
+        # note: if there are pieces in the way, we DONT capture them
+        if self._is_illegal_castle(board, move):
+            return None
+
+        # if the piece is a sliding piece, slide it as far as it can go
+        piece = board.piece_at(move.from_square)
+        if piece.piece_type in [chess.PAWN, chess.ROOK, chess.BISHOP, chess.QUEEN]:
+            move = self._slide_move(board, move)
+
+        return move if move in self.truth_board.generate_pseudo_legal_moves() else None
+
+    def handle_move(self, board, requested_move):
+        """
+        Takes in the agent requested move and updatest he board accordingly with any possible rule revision
+        :param requested_move: chess.Move -- the move the agent requested
+        
+        :return requested_move: chess.Move -- the move the agent requested
+        :return taken_move: chess.Move -- the move that was actually taken 
+        :return captured_square: chess.SQUARE -- the square where an opponent's piece is captured
+                                 None -- if there is no captured piece
+        """
+        move = self._add_pawn_queen_promotion(board, requested_move)
+        taken_move = self._revise_move(board, move)
+        
+        # push move to appropriate boards for updates #
+        board.push(taken_move if taken_move is not None else chess.Move.null())
+        return board
+
 	# function for node traversal 
     def expand(self, node):
         action = node.untried_actions.pop()
-        child_board = 
+        child_board = self.handle_move(node.board, action)
         child_node = Chess_Node(child_board, parent = node)
         child_node.action = action
         node.children.append(child_node)
@@ -175,9 +280,10 @@ class Ayers(Player):
             ]
         return node.children[np.argmax(choices_weights)]
 
+
 	def traverse(self, node):
 		current = node
-		while not #game_over:
+		while not self.is_over(current):
 			if not len(current.untried_actions)==0:
 				return self.expand(current)
 			else:
@@ -185,15 +291,30 @@ class Ayers(Player):
 	  	
 	  	return current
 	  
+	def result(self, board):
+		if not self.is_over(board):
+			return 0
+		if self.color == chess.WHITE:
+			if board.king(chess.WHITE) is None:
+				return -1
+			else:
+				return 1
+		else:
+			if board.king(chess.BLACK) is None:
+				return -1
+			else:
+				return 1
 
 	# function for the result of the simulation 
 	def rollout(self, node):
-        curr_board = node.board 
-	    while not curr_board.is_gameover():
-            move = possible_moves(board)
+        curr_board = node.board.copy()
+        count = 0
+	    while not self.is_over(cur_board) and count < 500:
+            move = possible_moves(cur_board)
             action = np.random.randint(len(move))
-	        curr_board = curr_board.move(action) 
-	    return result(curr_board) 
+	        curr_board = self.handle_move(curr_board, action) 
+	        count = count + 1
+	    return self.result(curr_board) 
 	  
 	# function for backpropagation 
 	def backpropagate(self, node, result): 
@@ -209,9 +330,9 @@ class Ayers(Player):
     	root = Chess_Node(self.board)
 
     	while(hasTimeLeft()):
-    		leaf = traverse(root)
-    		simulation_result = rollout(leaf)
-    		backpropagate(leaf, simulation _result)
+    		leaf = self.traverse(root)
+    		simulation_result = self.rollout(leaf)
+    		self.backpropagate(leaf, simulation _result)
 
     	return root.uct(param = 0.0).action
 
@@ -251,34 +372,6 @@ class Ayers(Player):
 
         # if all else fails, pass
         return None
-
-    def possible_moves(board):
-        ## This is lifted from game.py
-        # Will return a list of valid moves
-        # Get the board without opponnets pieces
-        b = board.copy()
-        for piece_type in chess.PIECE_TYPES:
-            for sq in b.pieces(piece_type, not self.color):
-                b.remove_piece_at(sq)
-
-        pawn_capture_moves = []
-
-        no_opponents_board = b
-
-        for pawn_square in board.pieces(chess.PAWN, self.color):
-            for attacked_square in board.attacks(pawn_square):
-                # skip this square if one of our own pieces are on the square
-                if no_opponents_board.piece_at(attacked_square):
-                    continue
-
-                pawn_capture_moves.append(chess.Move(pawn_square, attacked_square))
-
-                # add in promotion moves
-                if attacked_square in chess.SquareSet(chess.BB_BACKRANKS):
-                    for piece_type in chess.PIECE_TYPES[1:-1]:
-                        pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
-
-        return list(b.generate_psudo_legal_moves) + pawn_capture_moves
         
 
 class Chess_Node:
@@ -290,7 +383,7 @@ class Chess_Node:
          # Initialize the reward for the
          self.result = defaultdict(int)              # Will be an integer
 
-         self.untried_actions = None
+		 self.untried_actions = possible_moves(self.board)
 
          # Set up variables so children are accessable and a parent is accessable
          self.parent = parent            # Will be a single node
@@ -301,16 +394,11 @@ class Chess_Node:
         wins = self.results[self.parent]
         loses = self.results[-1*self.parent]
         return wins - loses
-
-     def untried_actions(self):
-        if self.untried_actions is None:
-            self.untried_actions = self.#possible_actions
      
      def __eq__(self, other):
          """
          Custom equality function for the Chess_Node to see if one node is equivalent to one
          another
-
          :param other: The other node that is being compared to this one
          """
          # Two nodes are "equal" in our game universe if they have the same board
@@ -326,7 +414,6 @@ class Chess_Node:
          """
          Pulled this code from stack overflow because I didn't know how to used the
          stockfish library
-
          :param board: The board that will be evaluated
          :param limit_time: The time limit that will be given for the evaluation
          """
@@ -335,4 +422,3 @@ class Chess_Node:
          return result['score']
         # TODO: implement this method
         pass
-
