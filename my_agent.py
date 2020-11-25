@@ -189,8 +189,8 @@ class Ayers(Player):
 	# function for the result of the simulation 
 	def rollout(self, node):
         curr_board = node.board 
-	    while non_terminal(curr_board):
-            move = possible_move(board)
+	    while not curr_board.is_gameover():
+            move = possible_moves(board)
             action = np.random.randint(len(move))
 	        curr_board = curr_board.move(action) 
 	    return result(curr_board) 
@@ -251,6 +251,35 @@ class Ayers(Player):
 
         # if all else fails, pass
         return None
+
+    def possible_moves(board):
+        ## This is lifted from game.py
+        # Will return a list of valid moves
+        # Get the board without opponnets pieces
+        b = board.copy()
+        for piece_type in chess.PIECE_TYPES:
+            for sq in b.pieces(piece_type, not self.color):
+                b.remove_piece_at(sq)
+
+        pawn_capture_moves = []
+
+        no_opponents_board = b
+
+        for pawn_square in board.pieces(chess.PAWN, self.color):
+            for attacked_square in board.attacks(pawn_square):
+                # skip this square if one of our own pieces are on the square
+                if no_opponents_board.piece_at(attacked_square):
+                    continue
+
+                pawn_capture_moves.append(chess.Move(pawn_square, attacked_square))
+
+                # add in promotion moves
+                if attacked_square in chess.SquareSet(chess.BB_BACKRANKS):
+                    for piece_type in chess.PIECE_TYPES[1:-1]:
+                        pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
+
+        return list(b.generate_psudo_legal_moves) + pawn_capture_moves
+        
 
 class Chess_Node:
      def __init__(self, board=None, parent = None):
