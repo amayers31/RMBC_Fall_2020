@@ -73,6 +73,11 @@ def possible_moves(board, color):
                 for piece_type in chess.PIECE_TYPES[1:-1]:
                     pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
 
+    
+    print("fddafa")
+    print(b)
+    print(list(b.generate_pseudo_legal_moves()))
+    
     return list(b.generate_pseudo_legal_moves()) + pawn_capture_moves
 
 # TODO: Rename this class to what you would like your bot to be named during the game.
@@ -104,6 +109,10 @@ class Ayers(Player):
         self.board = board
         self.color = color
         self.turn_number = 0
+        if self.color == chess.WHITE:
+            print("white")
+        if self.color == chess.BLACK:
+            print("white")
 
     def handle_opponent_move_result(self, captured_piece, captured_square):
         """
@@ -133,9 +142,9 @@ class Ayers(Player):
             return self.taken_square
 
         # if we might capture a piece when we move, sense where the capture will occur
-        future_move = self.choose_move(possible_moves, seconds_left)
-        if future_move is not None and self.board.piece_at(future_move.to_square) is not None:
-            return future_move.to_square
+        #future_move = self.choose_move(possible_moves, seconds_left)
+        #if future_move is not None and self.board.piece_at(future_move.to_square) is not None:
+        #    return future_move.to_square
 
         # otherwise, just randomly choose a sense action, but don't sense on a square where our pieces are located
         for square, piece in self.board.piece_map().items():
@@ -266,18 +275,20 @@ class Ayers(Player):
         
         # push move to appropriate boards for updates #
         board.push(taken_move if taken_move is not None else chess.Move.null())
-        return board
+        return board, (taken_move is not None)
 
     # function for node traversal 
     def expand(self, node):
-        action = node.untried_actions.pop()
-        child_board = self.handle_move(node.board, action)
-        child_color = None
-        if node.color == chess.WHITE:
-            child_color = chess.BLACK
-        else:
-            child_color = chess.WHITE
-        child_node = Chess_Node(board = child_board, parent = node, color = child_color)
+        curr_board = node.board.copy()
+        child_change = False
+        curr_untried_actions = node.untried_actions.copy()
+        while not child_change and len(node.untried_actions)>0:
+            action = node.untried_actions.pop()
+            child_board, child_change = self.handle_move(curr_board, action)
+        if not child_change:
+            return None
+
+        child_node = Chess_Node(board = child_board, parent = node, color = (not node.color))
         child_node.action = action
         node.children.append(child_node)
         return child_node
@@ -294,7 +305,11 @@ class Ayers(Player):
         current = node
         while not self.is_over(current.board):
             if not len(current.untried_actions)==0:
-                return self.expand(current)
+                child = self.expand(current)
+                if not child is None:
+                    return child
+                else:
+                    current = self.uct(current)
             else:
                 current = self.uct(current)
         
@@ -319,10 +334,10 @@ class Ayers(Player):
         curr_board = node.board.copy()
         color = node.color
         count = 0
-        while not self.is_over(curr_board) and count < 500:
+        while not self.is_over(curr_board) and count < 100:
             move = possible_moves(curr_board, color)
             action = np.random.randint(len(move))
-            curr_board = self.handle_move(curr_board, move[action]) 
+            curr_board, curr_change = self.handle_move(curr_board, move[action]) 
             count = count + 1
             if color == chess.WHITE:
                 color == chess.BLACK
@@ -343,17 +358,14 @@ class Ayers(Player):
 
         count = 0
         root = Chess_Node(board = self.board, color = self.color)
-        print("root")
-        print(self.board)
-        while(count < 10):
+        while(count < 100):
             leaf = self.traverse(root)
             simulation_result = self.rollout(leaf)
             self.backpropagate(leaf, simulation_result)
             count =  count + 1
 
-        act = self.uct(root, param = 0.0).action
-        print(act)
-        return act
+        child = self.uct(root, param = 0.0)
+        return child.action
 
     def choose_move(self, possible_moves, seconds_left):
         """
@@ -412,7 +424,8 @@ class Chess_Node:
          self.parent = parent            # Will be a single node
          self.children = []           # Will be a dictionary
          self.action = None
-     
+    
+     '''
      def __eq__(self, other):
          """
          Custom equality function for the Chess_Node to see if one node is equivalent to one
@@ -427,7 +440,7 @@ class Chess_Node:
          Custom hash function for the Chess_Node to create
          """
          return (hash(self.board))
-     '''
+     
      def analyze_board_w_fish(self, board, limit_time = 0.01):
          """
          Pulled this code from stack overflow because I didn't know how to used the
