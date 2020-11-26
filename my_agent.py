@@ -58,7 +58,7 @@ def possible_moves(board, color):
 
     pawn_capture_moves = []
 
-    no_opponents_board = b
+    no_opponents_board = b.copy()
 
     for pawn_square in board.pieces(chess.PAWN, color):
         for attacked_square in board.attacks(pawn_square):
@@ -75,6 +75,7 @@ def possible_moves(board, color):
 
     
     print("fddafa")
+    print(type(b))
     print(b)
     print(list(b.generate_pseudo_legal_moves()))
     
@@ -334,7 +335,7 @@ class Ayers(Player):
         curr_board = node.board.copy()
         color = node.color
         count = 0
-        while not self.is_over(curr_board) and count < 100:
+        while not self.is_over(curr_board) and count < 10:
             move = possible_moves(curr_board, color)
             action = np.random.randint(len(move))
             curr_board, curr_change = self.handle_move(curr_board, move[action]) 
