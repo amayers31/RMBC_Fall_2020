@@ -4,7 +4,7 @@
 File Name:      my_agent.py
 Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
 Date:           10/31/20
-Description:    Python file for our agent.
+Description:    Python file for my agent.
 Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 """
 
@@ -25,9 +25,11 @@ class Ayers(Player):
         # Set up a way to see if the opponent took one of your pieces, to immediately
         # respond since the strat should immediately respond to fire with fire
         self.taken_square = None
+        self.pawn_q = None
+        self.n_count = 0
 
         # Set up a turn counter for the model so that we can make specific moves the first few turns
-        self.turn_number = None
+        self.turn_number = 0
 
         self.sq = {}
 
@@ -38,7 +40,7 @@ class Ayers(Player):
         :param board: chess.Board -- initial board state
         :return:
         """
-        # Preliminary implementation
+
         self.board = board
         self.color = color
         self.turn_number = 0
@@ -50,6 +52,7 @@ class Ayers(Player):
         :param captured_square: chess.Square - position where your piece was captured
         """
         # If a piece was captured then set the taken square to equal the captured square
+        self.taken_square = None
         if captured_piece:
             self.taken_square = captured_square
             self.board.remove_piece_at(captured_square)
@@ -64,20 +67,30 @@ class Ayers(Player):
         :example: choice = chess.A1
         """
 
-        # if our piece was just captured, sense where it was captured
+        # if our piece was captured, sense where it was captured
         if self.taken_square:
             return self.taken_square
 
-        # otherwise, sense is randomly chosen, but not where pieces are located
+        if self.turn_number < 10:
+            return random.randint(17, 46)
+
+        # otherwise, sense is randomly chosen, but don't sense on a square where our pieces are located
         for square, piece in self.board.piece_map().items():
-            if piece.color == self.color and not piece.piece_type == chess.KING and not piece.piece_type == chess.QUEEN:
-                possible_sense.remove(square)
+            if piece.color == self.color:
+                if piece.piece_type == chess.PAWN:
+                    if (square > 47 and piece.color) or (square < 16 and (not piece.color)):
+                        self.pawn_q = square
+                        return square
+                    if (square > 39 and piece.color) or (square < 24 and (not piece.color)):
+                        return square
+
+                    if not piece.piece_type == chess.KING and not piece.piece_type == chess.QUEEN:
+                        possible_sense.remove(square)
 
         for s in range(64):
             if s < 8 or s > 55 or s % 8 == 0 or s % 8 == 7:
                 if s in possible_sense:
                     possible_sense.remove(s)
-
         return random.choice(possible_sense)
 
     def handle_sense_result(self, sense_result):
@@ -118,6 +131,9 @@ class Ayers(Player):
         """
 
         # if a move was executed, apply it to our board
+        if taken_move is None:
+            self.n_count = self.n_count + 1
+        self.board.turn = self.color
         self.board.push(taken_move if taken_move is not None else chess.Move.null())
 
     def handle_game_end(self, winner_color, win_reason):  # possible GameHistory object...
@@ -127,7 +143,7 @@ class Ayers(Player):
         :param win_reason: String -- the reason for the game ending
         """
 
-        pass
+        print(self.n_count)
 
     def choose_move(self, possible_moves, seconds_left):
         """
@@ -143,13 +159,7 @@ class Ayers(Player):
         """
 
         # if we might be able to take the king, try to
-        enemy_king_square = self.board.king(not self.color)
-        if enemy_king_square:
-            # if there are any ally pieces that can take king, execute one of those moves
-            enemy_king_attackers = self.board.attackers(self.color, enemy_king_square)
-            if enemy_king_attackers:
-                attacker_square = enemy_king_attackers.pop()
-                return chess.Move(attacker_square, enemy_king_square)
+        self.turn_number = self.turn_number + 1
 
         for piece in range(6, 0, -1):
             if piece in self.sq:
@@ -163,10 +173,44 @@ class Ayers(Player):
                             if index < i:
                                 i = index
                                 attacker = attackers
-                        if i <= piece + 1:
+                        if i <= piece + 1 or (self.turn_number < 10 and piece == chess.KNIGHT):
                             return chess.Move(attacker, e)
 
-        # if fails, run MCTS
+        if self.turn_number == 1:
+            if self.color:
+                return chess.Move.from_uci('e2e3')
+            else:
+                return chess.Move.from_uci('e7e6')
+        if self.turn_number == 2:
+            if self.color:
+                return chess.Move.from_uci('d1e2')
+            else:
+                return chess.Move.from_uci('d8e7')
+        if self.turn_number == 3:
+            if self.color:
+                return chess.Move.from_uci('e1d1')
+            else:
+                return chess.Move.from_uci('e8d8')
+
+        if self.pawn_q:
+            pq = self.pawn_q
+            self.pawn_q = None
+            if not self.board.piece_at(pq) is None and self.board.piece_at(
+                    pq).piece_type == chess.PAWN and self.board.piece_at(pq).color == self.color:
+                if self.color:
+                    i = 1
+                else:
+                    i = -1
+                if not self.board.piece_at(pq + i * 7) is None and not self.board.piece_at(
+                        pq + i * 7).color == self.color:
+                    return chess.Move(pq, pq + i * 7, chess.QUEEN)
+                if not self.board.piece_at(pq + i * 9) is None and not self.board.piece_at(
+                        pq + i * 9).color == self.color:
+                    return chess.Move(pq, pq + i * 9, chess.QUEEN)
+                if self.board.piece_at(pq + i * 8) is None:
+                    return chess.Move(pq, pq + i * 8, chess.QUEEN)
+
+        # if all else fails, run MCTS
         self.board.turn = self.color
         M = MCTS(self.board, self.color, possible_moves, seconds_left)
 
@@ -201,7 +245,7 @@ class MCTS:
         time = datetime.now()
 
         count = 0
-        while (count < 100):
+        while count < 50:
             leaf = self.traverse()
             if leaf is None:
                 break
@@ -373,8 +417,7 @@ class Chess_Node:
             count = count + 1
         return curr_node.result()
 
-        # function for backpropagation
-
+    # function for backpropagation
     def backpropagate(self, result):
         self.visits += 1
         self.total_rewards += result
