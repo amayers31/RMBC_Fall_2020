@@ -100,8 +100,13 @@ class Ayers(Player):
 
         # otherwise, just randomly choose a sense action, but don't sense on a square where our pieces are located
         for square, piece in self.board.piece_map().items():
-            if (piece.color == self.color and not piece.piece_type == chess.KING and not piece.piece_type == chess.QUEEN) or (square<8 or square > 55 or square%8==0 or square%8==7):
+            if (piece.color == self.color and not piece.piece_type == chess.KING and not piece.piece_type == chess.QUEEN):
                 possible_sense.remove(square)
+
+        for s in range(64):
+            if s<8 or s > 55 or s%8==0 or s%8==7:
+                if s in possible_sense:
+                    possible_sense.remove(s)
         return random.choice(possible_sense)
         
     def handle_sense_result(self, sense_result):
@@ -190,13 +195,18 @@ class Ayers(Player):
                             if index < i:
                                 i = index
                                 attacker = attackers
-                        if i <= piece:
+                        if i <= piece+1:
                             return chess.Move(attacker, e)
 
         # if all else fails, pass
         self.board.turn = self.color
         M = MCTS(self.board, self.color, possible_moves, seconds_left)
-        return M.Search()
+
+        print(seconds_left)
+        action = M.Search()
+        if action is None:
+            return possible_moves[np.random.randint((int)(len(possible_moves)/2))]
+        return action
 
 class MCTS:
     def __init__(self, board, color, possible_moves, seconds_left):
@@ -216,18 +226,25 @@ class MCTS:
             else:
                 current = current.uct()
 
+        return None
+
     def Search(self):
         time = datetime.now()
 
         count = 0
-        while(count < 50):
+        count_None = 0
+        while(count < 100):
             leaf = self.traverse()
-            if leaf is not None:
-                simulation_result = leaf.rollout()
-                leaf.backpropagate(simulation_result)         
+            if leaf is None: 
+                break
+            simulation_result = leaf.rollout()
+            leaf.backpropagate(simulation_result)
+     
             count =  count + 1
 
         child = self.root.uct(param = 0.0)
+        if child is None:
+            return None
         return child.action
         
 
@@ -235,7 +252,7 @@ class Chess_Node:
     def __init__(self, board, color, parent = None):
         self.board = board              # Will be a chess.Board board
         self.color =  color
-        self.board.turn = self.color
+        self.board.turn = color
         self.total_rewards = 0
         self.visits = 0      
         self.parent = parent
@@ -281,7 +298,7 @@ class Chess_Node:
         return False
     
     def _slide_move(self, board, move):
-        psuedo_legal_moves = list(self.board.generate_pseudo_legal_moves())
+        psuedo_legal_moves = list(board.generate_pseudo_legal_moves())
         squares = list(chess.SquareSet(chess.BB_BETWEEN[move.from_square][move.to_square])) + [move.to_square]
         squares = sorted(squares, key=lambda s: chess.square_distance(s, move.from_square), reverse=True)
         for slide_square in squares:
@@ -327,27 +344,28 @@ class Chess_Node:
 
     # function for node traversal 
     def expand(self):
-        child_change = False
-        while not child_change and len(self.untried_actions)>0:
+        while len(self.untried_actions)>0:
             action = self.untried_actions.pop()
-            child_change = self.check_move(action)
-        if not child_change:
-            return None
+            if self.check_move(action):
+                curr_board = self.board.copy()
+                curr_board.push(action)
+                child_node = Chess_Node(curr_board, (not self.color), parent = self)
+                child_node.action = action
+                self.children.append(child_node)
+                return child_node
 
-        curr_board = self.board.copy()
-        curr_board.push(action)
-        child_node = Chess_Node(curr_board, (not self.color), parent = self)
-        child_node.action = action
-        self.children.append(child_node)
-        return child_node
+        return None
+
 
     def uct(self, param = 1.4):
         choices_weights = [
             (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(self.visits) / child.visits)) 
             for child in self.children
         ]
+        
         if len(choices_weights)==0:
             return None
+        
         return self.children[np.argmax(choices_weights)]
       
     def result(self):
@@ -369,15 +387,16 @@ class Chess_Node:
 
     def handle_turn(self):
         self.color = not (self.color)
-        self.board.color = self.color
+        self.board.turn = self.color
 
     # function for the result of the simulation 
     def rollout(self):
-        curr_node = Chess_Node(self.board, self.color)
+        curr_board = self.board.copy()
+        curr_node = Chess_Node(curr_board, self.color)
         count = 0
         while not curr_node.is_over() and count < 100:
             move = curr_node.possible()
-            if len(move) == 0:
+            if len(move) == 0: 
                 return curr_node.result()
             action = np.random.randint(len(move))
             curr_change = curr_node.check_move(move[action])
