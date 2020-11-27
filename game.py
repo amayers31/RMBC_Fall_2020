@@ -71,10 +71,6 @@ class Game:
         for piece_type in chess.PIECE_TYPES:
             for sq in b.pieces(piece_type, not turn):
                 b.remove_piece_at(sq)
-        print('b')
-        print(type(b))
-        print(b)
-        print(list(b.generate_pseudo_legal_moves()))
         return b
     
     def _moves_without_opponent_pieces(self, board, turn):

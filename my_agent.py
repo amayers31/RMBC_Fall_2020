@@ -1,8 +1,10 @@
+#!/usr/bin/env python3
+
 """
 File Name:      my_agent.py
-Authors:        TODO: Your names here!
-Date:           TODO: The date you finally started working on this.
-Description:    Python file for my agent.
+Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
+Date:           10/31/20
+Description:    Python file for our agent.
 Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
 """
 
@@ -10,75 +12,16 @@ import random
 import chess
 from player import Player
 import numpy as np
-from collections import defaultdict
 from datetime import datetime
 
-'''
-# TODO: Rename this class to what you would like your bot to be named during the game.
-class MyAgent(Player):
-    def __init__(self):
-        pass
-        
-    def handle_game_start(self, color, board):
-        """
-        This function is called at the start of the game.
-        :param color: chess.BLACK or chess.WHITE -- your color assignment for the game
-        :param board: chess.Board -- initial board state
-        :return:
-        """
-'''
-"""
-File Name:      my_agent.py
-Authors:        Austin Ayers, Oscar Liu, Chanelleah Miller
-Date:           10/31/20
-Description:    Python file for my agent.
-Source:         Adapted from recon-chess (https://pypi.org/project/reconchess/)
-"""
 
-import random
-import chess
-import chess.engine
-from datetime import datetime                   # Used to MCTS in a certain amount so we don't run out of time
-
-from player import Player
-
-
-def possible_moves(board, color):
-    ## This is lifted from game.py
-    # Will return a list of valid moves
-    # Get the board without opponnets pieces
-    b = board.copy()
-    for piece_type in chess.PIECE_TYPES:
-        for sq in b.pieces(piece_type, not color):
-            b.remove_piece_at(sq)
-
-    pawn_capture_moves = []
-
-    no_opponents_board = b.copy()
-
-    for pawn_square in board.pieces(chess.PAWN, color):
-        for attacked_square in board.attacks(pawn_square):
-            # skip this square if one of our own pieces are on the square
-            if no_opponents_board.piece_at(attacked_square):
-                continue
-
-            pawn_capture_moves.append(chess.Move(pawn_square, attacked_square))
-
-            # add in promotion moves
-            if attacked_square in chess.SquareSet(chess.BB_BACKRANKS):
-                for piece_type in chess.PIECE_TYPES[1:-1]:
-                    pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
-
-    return list(b.generate_pseudo_legal_moves()) + pawn_capture_moves
-
-# TODO: Rename this class to what you would like your bot to be named during the game.
 class Ayers(Player):
 
     def __init__(self):
         # Use the init to set up ways to keep track of the things the board knows
         self.board = None
         self.color = None
-        
+
         # Set up a way to see if the opponent took one of your pieces, to immediately
         # respond since the strat should immediately respond to fire with fire
         self.taken_square = None
@@ -86,9 +29,8 @@ class Ayers(Player):
         # Set up a turn counter for the model so that we can make specific moves the first few turns
         self.turn_number = None
 
-        #from https://python-chess.readthedocs.io/en/latest/engine.html
-        #self.engine = chess.engine.SimpleEngine.popen_uci("STOCKFISH_PATH_HERE")
-        
+        self.sq = {}
+
     def handle_game_start(self, color, board):
         """
         This function is called at the start of the game.
@@ -96,14 +38,10 @@ class Ayers(Player):
         :param board: chess.Board -- initial board state
         :return:
         """
-        # Preliminary implementation to handle the 
+        # Preliminary implementation
         self.board = board
         self.color = color
         self.turn_number = 0
-        if self.color == chess.WHITE:
-            print("white")
-        if self.color == chess.BLACK:
-            print("white")
 
     def handle_opponent_move_result(self, captured_piece, captured_square):
         """
@@ -112,10 +50,8 @@ class Ayers(Player):
         :param captured_square: chess.Square - position where your piece was captured
         """
         # If a piece was captured then set the taken square to equal the captured square
-        if captured_piece == True:
-            # Set the self variable
+        if captured_piece:
             self.taken_square = captured_square
-            # Alter the board that the player has in it's brain to see if 
             self.board.remove_piece_at(captured_square)
 
     def choose_sense(self, possible_sense, possible_moves, seconds_left):
@@ -127,22 +63,23 @@ class Ayers(Player):
         :return: chess.SQUARE -- the center of 3x3 section of the board you want to sense
         :example: choice = chess.A1
         """
-        # TODO: update this method
+
         # if our piece was just captured, sense where it was captured
         if self.taken_square:
             return self.taken_square
 
-        # if we might capture a piece when we move, sense where the capture will occur
-        #future_move = self.choose_move(possible_moves, seconds_left)
-        #if future_move is not None and self.board.piece_at(future_move.to_square) is not None:
-        #    return future_move.to_square
-
-        # otherwise, just randomly choose a sense action, but don't sense on a square where our pieces are located
+        # otherwise, sense is randomly chosen, but not where pieces are located
         for square, piece in self.board.piece_map().items():
-            if piece.color == self.color:
+            if piece.color == self.color and not piece.piece_type == chess.KING and not piece.piece_type == chess.QUEEN:
                 possible_sense.remove(square)
+
+        for s in range(64):
+            if s < 8 or s > 55 or s % 8 == 0 or s % 8 == 7:
+                if s in possible_sense:
+                    possible_sense.remove(s)
+
         return random.choice(possible_sense)
-        
+
     def handle_sense_result(self, sense_result):
         """
         This is a function called after your picked your 3x3 square to sense and gives you the chance to update your
@@ -159,8 +96,15 @@ class Ayers(Player):
         # Hint: until this method is implemented, any senses you make will be lost.
         # Rudimentary implementation to set pieces in the board that we have access to
         # Update the self.board with the observation by iterating over the list given in the sense result
+        self.sq = {}
         for square in sense_result:
             self.board.set_piece_at(square[0], square[1])
+            if not square[1] is None and not square[1].color == self.color:
+                piece_type = square[1].piece_type
+                if not piece_type in self.sq:
+                    self.sq[piece_type] = [square[0]]
+                else:
+                    self.sq[piece_type].append(square[0])
 
     def handle_move_result(self, requested_move, taken_move, reason, captured_piece, captured_square):
         """
@@ -172,11 +116,10 @@ class Ayers(Player):
         :param captured_piece: bool - true if you captured your opponents piece
         :param captured_square: chess.Square - position where you captured the piece
         """
-        # TODO: implement this method
+
         # if a move was executed, apply it to our board
-        if taken_move is not None:
-            self.board.push(taken_move)
-        
+        self.board.push(taken_move if taken_move is not None else chess.Move.null())
+
     def handle_game_end(self, winner_color, win_reason):  # possible GameHistory object...
         """
         This function is called at the end of the game to declare a winner.
@@ -184,25 +127,124 @@ class Ayers(Player):
         :param win_reason: String -- the reason for the game ending
         """
         # TODO: implement this method
-        try:
-            # if the engine is already terminated then this call will throw an exception
-            self.engine.quit()
-        except chess.engine.EngineTerminatedError:
-            pass
+        pass
 
-    def is_over(self, board):
-        return board.king(chess.WHITE) is None or board.king(chess.BLACK) is None
+    def choose_move(self, possible_moves, seconds_left):
+        """
+        Choose a move to enact from a list of possible moves.
+        :param possible_moves: List(chess.Moves) -- list of acceptable moves based only on pieces
+        :param seconds_left: float -- seconds left to make a move
 
-    def _add_pawn_queen_promotion(self, board, move):
+        :return: chess.Move -- object that includes the square you're moving from to the square you're moving to
+        :example: choice = chess.Move(chess.F2, chess.F4)
+
+        :condition: If you intend to move a pawn for promotion other than Queen, please specify the promotion parameter
+        :example: choice = chess.Move(chess.G7, chess.G8, promotion=chess.KNIGHT) *default is Queen
+        """
+        # TODO: update this method -- Need to implement MCTS here
+
+        # if we might be able to take the king, try to
+        enemy_king_square = self.board.king(not self.color)
+        if enemy_king_square:
+            # if there are any ally pieces that can take king, execute one of those moves
+            enemy_king_attackers = self.board.attackers(self.color, enemy_king_square)
+            if enemy_king_attackers:
+                attacker_square = enemy_king_attackers.pop()
+                return chess.Move(attacker_square, enemy_king_square)
+
+        for piece in range(6, 0, -1):
+            if piece in self.sq:
+                for e in self.sq[piece]:
+                    enemy_attackers = self.board.attackers(self.color, e)
+                    if enemy_attackers:
+                        i = 7
+                        attacker = None
+                        for attackers in enemy_attackers:
+                            index = self.board.piece_at(attackers).piece_type
+                            if index < i:
+                                i = index
+                                attacker = attackers
+                        if i <= piece + 1:
+                            return chess.Move(attacker, e)
+
+        # if fails, run MCTS
+        self.board.turn = self.color
+        M = MCTS(self.board, self.color, possible_moves, seconds_left)
+
+        print(seconds_left)
+        action = M.Search()
+        if action is None:
+            return possible_moves[np.random.randint((int)(len(possible_moves) / 2))]
+        return action
+
+
+class MCTS:
+    def __init__(self, board, color, possible_moves, seconds_left):
+        self.root = Chess_Node(board, color)
+        self.possible_moves = possible_moves
+        self.seconds_left = seconds_left
+
+    def traverse(self):
+        current = self.root
+        while not current is None and not current.is_over():
+            if not len(current.untried_actions) == 0:
+                child = current.expand()
+                if not child is None:
+                    return child
+                else:
+                    current = current.uct()
+            else:
+                current = current.uct()
+
+        return None
+
+    def Search(self):
+        time = datetime.now()
+
+        count = 0
+        while (count < 100):
+            leaf = self.traverse()
+            if leaf is None:
+                break
+            simulation_result = leaf.rollout()
+            leaf.backpropagate(simulation_result)
+
+            count = count + 1
+
+        child = self.root.uct(param=0.0)
+        if child is None:
+            return None
+        return child.action
+
+
+class Chess_Node:
+    def __init__(self, board, color, parent=None):
+        self.board = board  # Will be a chess.Board board
+        self.color = color
+        self.board.turn = color
+        self.total_rewards = 0
+        self.visits = 0
+        self.parent = parent
+
+        self.untried_actions = self.possible()
+
+        # Set up variables so children are accessable and a parent is accessable
+        self.children = []
+        self.action = None
+
+    def is_over(self):
+        return self.board.king(chess.WHITE) is None or self.board.king(chess.BLACK) is None
+
+    def _add_pawn_queen_promotion(self, move):
         back_ranks = list(chess.SquareSet(chess.BB_BACKRANKS))
-        piece = board.piece_at(move.from_square)
+        piece = self.board.piece_at(move.from_square)
         if piece is not None and piece.piece_type == chess.PAWN and move.to_square in back_ranks and move.promotion is None:
             move = chess.Move(move.from_square, move.to_square, chess.QUEEN)
         return move
-    
+
     def _is_psuedo_legal_castle(self, board, move):
         return board.is_castling(move) and not self._is_illegal_castle(board, move)
-    
+
     def _is_illegal_castle(self, board, move):
         if not board.is_castling(move):
             return False
@@ -223,8 +265,8 @@ class Ayers(Player):
 
         # its legal
         return False
-    
-    def slide_move(self, board, move):
+
+    def _slide_move(self, board, move):
         psuedo_legal_moves = list(board.generate_pseudo_legal_moves())
         squares = list(chess.SquareSet(chess.BB_BETWEEN[move.from_square][move.to_square])) + [move.to_square]
         squares = sorted(squares, key=lambda s: chess.square_distance(s, move.from_square), reverse=True)
@@ -234,220 +276,134 @@ class Ayers(Player):
                 return revised
         return None
 
-    def revise_move(self, board, move):
+    def _revise_move(self, move):
         # if its a legal move, don't change it at all. note that board.generate_psuedo_legal_moves() does not
         # include psuedo legal castles
-        if move in board.generate_pseudo_legal_moves() or self._is_psuedo_legal_castle(board, move):
+        if move in self.board.generate_pseudo_legal_moves() or self._is_psuedo_legal_castle(self.board, move):
             return move
 
         # note: if there are pieces in the way, we DONT capture them
-        if self._is_illegal_castle(board, move):
+        if self._is_illegal_castle(self.board, move):
             return None
 
         # if the piece is a sliding piece, slide it as far as it can go
-        piece = board.piece_at(move.from_square)
+        piece = self.board.piece_at(move.from_square)
         if not piece is None and piece.piece_type in [chess.PAWN, chess.ROOK, chess.BISHOP, chess.QUEEN]:
-            move = self.slide_move(board, move)
+            move = self._slide_move(self.board, move)
 
-        return move if move in board.generate_pseudo_legal_moves() else None
+        return move if move in self.board.generate_pseudo_legal_moves() else None
 
-    def handle_move(self, board, requested_move):
+    def check_move(self, requested_move):
         """
         Takes in the agent requested move and updatest he board accordingly with any possible rule revision
         :param requested_move: chess.Move -- the move the agent requested
-        
+
         :return requested_move: chess.Move -- the move the agent requested
-        :return taken_move: chess.Move -- the move that was actually taken 
+        :return taken_move: chess.Move -- the move that was actually taken
         :return captured_square: chess.SQUARE -- the square where an opponent's piece is captured
                                  None -- if there is no captured piece
         """
-        move = self._add_pawn_queen_promotion(board, requested_move)
-        taken_move = self.revise_move(board, move)
-        
-        # push move to appropriate boards for updates #
-        board.push(taken_move if taken_move is not None else chess.Move.null())
-        return board, (taken_move is not None)
+        if self.is_over():
+            return False
 
-    # function for node traversal 
-    def expand(self, node):
-        curr_board = node.board.copy()
-        child_change = False
-        curr_untried_actions = node.untried_actions.copy()
-        while not child_change and len(node.untried_actions)>0:
-            action = node.untried_actions.pop()
-            child_board, child_change = self.handle_move(curr_board, action)
-        if not child_change:
-            return None
+        move = self._add_pawn_queen_promotion(requested_move)
+        taken_move = self._revise_move(move)
 
-        child_node = Chess_Node(board = child_board, parent = node, color = (not node.color))
-        child_node.action = action
-        node.children.append(child_node)
-        return child_node
+        return (taken_move is not None)
 
-    def uct(self, node, param = 1.4):
+    # function for node traversal
+    def expand(self):
+        while len(self.untried_actions) > 0:
+            action = self.untried_actions.pop()
+            if self.check_move(action):
+                curr_board = self.board.copy()
+                curr_board.push(action)
+                child_node = Chess_Node(curr_board, (not self.color), parent=self)
+                child_node.action = action
+                self.children.append(child_node)
+                return child_node
+
+        return None
+
+    def uct(self, param=1.4):
         choices_weights = [
-            (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits)) 
-            for child in node.children
+            (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(self.visits) / child.visits))
+            for child in self.children
         ]
-        if len(choices_weights)==0:
+
+        if len(choices_weights) == 0:
             return None
-        return node.children[np.argmax(choices_weights)]
 
+        return self.children[np.argmax(choices_weights)]
 
-    def traverse(self, node):
-        current = node
-        while not current is None and not self.is_over(current.board):
-            if not len(current.untried_actions)==0:
-                child = self.expand(current)
-                if not child is None:
-                    return child
-                else:
-                    current = self.uct(current)
-            else:
-                current = self.uct(current)
-      
-    def result(self, board):
-        if not self.is_over(board):
+    def result(self):
+        if not self.is_over():
             return 0
         if self.color == chess.WHITE:
-            if board.king(chess.WHITE) is None:
+            if self.board.king(chess.WHITE) is None:
                 return -1
             else:
                 return 1
         else:
-            if board.king(chess.BLACK) is None:
+            if self.board.king(chess.BLACK) is None:
                 return -1
             else:
                 return 1
 
-    # function for the result of the simulation 
-    def rollout(self, node):
-        curr_board = node.board.copy()
-        color = node.color
+    def handle_move(self, move):
+        self.board.push(move)
+
+    def handle_turn(self):
+        self.color = not (self.color)
+        self.board.turn = self.color
+
+    # function for the result of the simulation
+    def rollout(self):
+        curr_board = self.board.copy()
+        curr_node = Chess_Node(curr_board, self.color)
         count = 0
-        while not self.is_over(curr_board) and count < 100:
-            move = possible_moves(curr_board, color)
+        while not curr_node.is_over() and count < 100:
+            move = curr_node.possible()
+            if len(move) == 0:
+                return curr_node.result()
             action = np.random.randint(len(move))
-            curr_board, curr_change = self.handle_move(curr_board, move[action]) 
+            curr_change = curr_node.check_move(move[action])
+            if curr_change:
+                curr_node.handle_move(move[action])
+            curr_node.handle_turn()
             count = count + 1
-            color = not(color)
-        return self.result(curr_board) 
-      
-    # function for backpropagation 
-    def backpropagate(self, node, result): 
-        node.visits += 1
-        node.total_rewards+=result
-            
-        if node.parent:
-            self.backpropagate(node.parent, result) 
+        return curr_node.result()
 
-    def MCTS(self, possible_moves, seconds_left):
-        time = datetime.now()
+        # function for backpropagation
 
-        count = 0
-        root = Chess_Node(board = self.board, color = self.color)
-        while(count < 10):
-            print(count)
-            leaf = self.traverse(root)
-            if leaf is not None:
-                simulation_result = self.rollout(leaf)
-                self.backpropagate(leaf, simulation_result)
-            if leaf is None and count == 0:
-                valid_moves = len(possible_moves) - len(root.untried_actions)
-                valid = []
-                for move in range(valid_moves):
-                    temp_board = self.board.copy()
-                    
-                move = np.random.randint(valid_moves)
-                return possible_moves[move]              
-            count =  count + 1
+    def backpropagate(self, result):
+        self.visits += 1
+        self.total_rewards += result
 
-        child = self.uct(root, param = 0.0)
-        return child.action
+        if self.parent:
+            self.parent.backpropagate(result)
 
-    def choose_move(self, possible_moves, seconds_left):
-        """
-        Choose a move to enact from a list of possible moves.
-        :param possible_moves: List(chess.Moves) -- list of acceptable moves based only on pieces
-        :param seconds_left: float -- seconds left to make a move
-        
-        :return: chess.Move -- object that includes the square you're moving from to the square you're moving to
-        :example: choice = chess.Move(chess.F2, chess.F4)
-        
-        :condition: If you intend to move a pawn for promotion other than Queen, please specify the promotion parameter
-        :example: choice = chess.Move(chess.G7, chess.G8, promotion=chess.KNIGHT) *default is Queen
-        """
-        # TODO: update this method -- Need to implement MCTS here
+    def possible(self):
+        b = self.board.copy()
+        for piece_type in chess.PIECE_TYPES:
+            for sq in b.pieces(piece_type, not self.color):
+                b.remove_piece_at(sq)
 
-        # if we might be able to take the king, try to
-        enemy_king_square = self.board.king(not self.color)
-        if enemy_king_square:
-            # if there are any ally pieces that can take king, execute one of those moves
-            enemy_king_attackers = self.board.attackers(self.color, enemy_king_square)
-            if enemy_king_attackers:
-                attacker_square = enemy_king_attackers.pop()
-                return chess.Move(attacker_square, enemy_king_square)
+        pawn_capture_moves = []
 
-        # otherwise, try to move with the stockfish chess engine
-        '''
-        try:
-            self.board.turn = self.color
-            self.board.clear_stack()
-            result = self.engine.play(self.board, chess.engine.Limit(time=0.5))
-            return result.move
-        except chess.engine.EngineTerminatedError:
-            print('Stockfish Engine died')
-        except chess.engine.EngineError:
-            print('Stockfish Engine bad state at "{}"'.format(self.board.fen()))
-        '''
+        no_opponents_board = b.copy()
 
-        # if all else fails, pass
-        return self.MCTS(possible_moves, seconds_left)
-        
+        for pawn_square in self.board.pieces(chess.PAWN, self.color):
+            for attacked_square in self.board.attacks(pawn_square):
+                # skip this square if one of our own pieces are on the square
+                if no_opponents_board.piece_at(attacked_square):
+                    continue
 
-class Chess_Node:
-     def __init__(self, board=None, color=None, parent = None):
-         self.board = board              # Will be a chess.Board board
-         self.color =  color
-         self.total_rewards = 0
+                pawn_capture_moves.append(chess.Move(pawn_square, attacked_square))
 
-         self.visits = 0              # Will be an integer
+                # add in promotion moves
+                if attacked_square in chess.SquareSet(chess.BB_BACKRANKS):
+                    for piece_type in chess.PIECE_TYPES[1:-1]:
+                        pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
 
-         # Initialize the reward for the
-         self.result = defaultdict(int)              # Will be an integer
-
-         self.untried_actions = possible_moves(self.board, self.color)
-
-         # Set up variables so children are accessable and a parent is accessable
-         self.parent = parent            # Will be a single node
-         self.children = []           # Will be a dictionary
-         self.action = None
-    
-     '''
-     def __eq__(self, other):
-         """
-         Custom equality function for the Chess_Node to see if one node is equivalent to one
-         another
-         :param other: The other node that is being compared to this one
-         """
-         # Two nodes are "equal" in our game universe if they have the same board
-         return self.board == other.board
-     def __hash__(self):
-         """
-         Custom hash function for the Chess_Node to create
-         """
-         return (hash(self.board))
-     
-     def analyze_board_w_fish(self, board, limit_time = 0.01):
-         """
-         Pulled this code from stack overflow because I didn't know how to used the
-         stockfish library
-         :param board: The board that will be evaluated
-         :param limit_time: The time limit that will be given for the evaluation
-         """
-         engine = chess.engine.SimpleEngine.popen_uci("stockfish_10_x64")
-         result = engine.analyse(board, chess.engine.Limit(time=limit_time))
-         return result['score']
-        # TODO: implement this method
-        pass
-    '''
+        return list(b.generate_pseudo_legal_moves()) + pawn_capture_moves
