@@ -1,6 +1,3 @@
-  
-#!/usr/bin/env python3
-
 """
 File Name:      my_agent.py
 Authors:        TODO: Your names here!
@@ -19,7 +16,6 @@ from datetime import datetime
 '''
 # TODO: Rename this class to what you would like your bot to be named during the game.
 class MyAgent(Player):
-
     def __init__(self):
         pass
         
@@ -73,12 +69,6 @@ def possible_moves(board, color):
                 for piece_type in chess.PIECE_TYPES[1:-1]:
                     pawn_capture_moves.append(chess.Move(pawn_square, attacked_square, promotion=piece_type))
 
-    
-    print("fddafa")
-    print(type(b))
-    print(b)
-    print(list(b.generate_pseudo_legal_moves()))
-    
     return list(b.generate_pseudo_legal_moves()) + pawn_capture_moves
 
 # TODO: Rename this class to what you would like your bot to be named during the game.
@@ -299,12 +289,14 @@ class Ayers(Player):
             (child.total_rewards / child.visits) + param * np.sqrt((2 * np.log(node.visits) / child.visits)) 
             for child in node.children
         ]
+        if len(choices_weights)==0:
+            return None
         return node.children[np.argmax(choices_weights)]
 
 
     def traverse(self, node):
         current = node
-        while not self.is_over(current.board):
+        while not current is None and not self.is_over(current.board):
             if not len(current.untried_actions)==0:
                 child = self.expand(current)
                 if not child is None:
@@ -313,8 +305,6 @@ class Ayers(Player):
                     current = self.uct(current)
             else:
                 current = self.uct(current)
-        
-        return current
       
     def result(self, board):
         if not self.is_over(board):
@@ -335,15 +325,12 @@ class Ayers(Player):
         curr_board = node.board.copy()
         color = node.color
         count = 0
-        while not self.is_over(curr_board) and count < 10:
+        while not self.is_over(curr_board) and count < 100:
             move = possible_moves(curr_board, color)
             action = np.random.randint(len(move))
             curr_board, curr_change = self.handle_move(curr_board, move[action]) 
             count = count + 1
-            if color == chess.WHITE:
-                color == chess.BLACK
-            else:
-                color == chess.WHITE
+            color = not(color)
         return self.result(curr_board) 
       
     # function for backpropagation 
@@ -359,10 +346,20 @@ class Ayers(Player):
 
         count = 0
         root = Chess_Node(board = self.board, color = self.color)
-        while(count < 100):
+        while(count < 10):
+            print(count)
             leaf = self.traverse(root)
-            simulation_result = self.rollout(leaf)
-            self.backpropagate(leaf, simulation_result)
+            if leaf is not None:
+                simulation_result = self.rollout(leaf)
+                self.backpropagate(leaf, simulation_result)
+            if leaf is None and count == 0:
+                valid_moves = len(possible_moves) - len(root.untried_actions)
+                valid = []
+                for move in range(valid_moves):
+                    temp_board = self.board.copy()
+                    
+                move = np.random.randint(valid_moves)
+                return possible_moves[move]              
             count =  count + 1
 
         child = self.uct(root, param = 0.0)
@@ -435,7 +432,6 @@ class Chess_Node:
          """
          # Two nodes are "equal" in our game universe if they have the same board
          return self.board == other.board
-
      def __hash__(self):
          """
          Custom hash function for the Chess_Node to create
