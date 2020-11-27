@@ -126,7 +126,7 @@ class Ayers(Player):
         :param winner_color: Chess.BLACK/chess.WHITE -- the winning color
         :param win_reason: String -- the reason for the game ending
         """
-        # TODO: implement this method
+
         pass
 
     def choose_move(self, possible_moves, seconds_left):
@@ -141,7 +141,6 @@ class Ayers(Player):
         :condition: If you intend to move a pawn for promotion other than Queen, please specify the promotion parameter
         :example: choice = chess.Move(chess.G7, chess.G8, promotion=chess.KNIGHT) *default is Queen
         """
-        # TODO: update this method -- Need to implement MCTS here
 
         # if we might be able to take the king, try to
         enemy_king_square = self.board.king(not self.color)
@@ -228,7 +227,7 @@ class Chess_Node:
 
         self.untried_actions = self.possible()
 
-        # Set up variables so children are accessable and a parent is accessable
+        # Set up variables so children are accessible and a parent is accessible
         self.children = []
         self.action = None
 
@@ -309,7 +308,7 @@ class Chess_Node:
         move = self._add_pawn_queen_promotion(requested_move)
         taken_move = self._revise_move(move)
 
-        return (taken_move is not None)
+        return taken_move is not None
 
     # function for node traversal
     def expand(self):
@@ -354,7 +353,7 @@ class Chess_Node:
         self.board.push(move)
 
     def handle_turn(self):
-        self.color = not (self.color)
+        self.color = not self.color
         self.board.turn = self.color
 
     # function for the result of the simulation
